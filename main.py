@@ -1,7 +1,8 @@
 from src.train import *
 from src.model import *
 from lightning.pytorch import Trainer
-from lightning.pytorch.callbacks import LearningRateMonitor, EarlyStopping
+from lightning.pytorch.callbacks import LearningRateMonitor, EarlyStopping, ModelCheckpoint
+from lightning.pytorch.loggers import TensorBoardLogger
 from argparse import ArgumentParser
 
 
@@ -16,22 +17,31 @@ parser.add_argument("--fold", type=int, default=0, help="Fold to use for trainin
 args = parser.parse_args()
 
 def main():
-    # Initialize model
     model = ModelApp(batch_size=args.batch, lr=args.lr, ada=args.ada, model=args.model)
 
-    # TODO: You need to define a DataModule or dataloaders here
-    # Example (if you have a DataModule class defined in src.train):
-    # datamodule = GrandXrayDataModule(batch_size=args.batch, augment=args.ada)
+    logger = TensorBoardLogger(
+        save_dir="logs",
+        name=args.model
+    )
+
+    checkpoint = ModelCheckpoint(
+        monitor="val_loss",
+        filename="{epoch:03d}-{val_loss:.3f}",
+        mode="min",
+        save_top_k=1,
+        every_n_epochs=1
+    )
 
     trainer = Trainer(
         max_epochs=args.epochs,
         callbacks=[
             LearningRateMonitor(logging_interval="epoch"),
-            EarlyStopping(monitor="val_loss", min_delta=1e-2, patience=10)
-        ]
+            EarlyStopping(monitor="val_loss", min_delta=1e-2, patience=10),
+            checkpoint
+        ],
+        logger=logger
     )
 
-    # trainer.fit(model, datamodule=datamodule)  # Use this once datamodule is ready
     trainer.fit(model)
 
 
