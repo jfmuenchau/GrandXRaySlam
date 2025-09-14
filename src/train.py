@@ -9,10 +9,17 @@ from .model import *
 from glob import glob
 from sklearn.model_selection import KFold
 
+models_ = {
+    "res18": get_resnet18,
+    "res50": get_resnet50,
+    "vit_b": get_vit_base,
+    "vit_t": get_vit_tiny
+}
+
 class ModelApp(LightningModule):
-    def __init__(self, batch_size:int, lr:float, ada=False, fold=0):
+    def __init__(self, batch_size:int, lr:float, model:str, ada=False, fold=0):
         super().__init__()
-        self.model = get_resnet50()
+        self.model = models_[model]()
         self.batch_size = batch_size
         self.lr = lr
 
