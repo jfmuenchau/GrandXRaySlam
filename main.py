@@ -17,7 +17,7 @@ args = parser.parse_args()
 
 def main():
     # Initialize model
-    model = ModelApp(batch_size=parser.batch, lr=parser.lr, ada=parser.ada, model=parser.model)
+    model = ModelApp(batch_size=args.batch, lr=args.lr, ada=args.ada, model=args.model)
 
     # TODO: You need to define a DataModule or dataloaders here
     # Example (if you have a DataModule class defined in src.train):
