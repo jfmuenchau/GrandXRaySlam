@@ -1,2 +1,10 @@
-/data/*/*.tar
-/data/*.csv
+data/*/*.tar
+data/*.csv
+
+.vscode/
+
+__pycache__/
+
+lightning_logs/
+
+weights/
