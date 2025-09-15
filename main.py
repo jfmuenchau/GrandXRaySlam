@@ -31,7 +31,7 @@ def setup_seed(seed=42):
 def main():
 
     setup_seed()
-    weights = get_class_weights("data/train1.csv")
+    weights = torch.tensor(get_class_weights("data/train1.csv"), dtype=torch.float32)
 
     model = ModelApp(
         batch_size=args.batch,

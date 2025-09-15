@@ -63,7 +63,7 @@ class ModelApp(LightningModule):
 
     def train_dataloader(self):
         dataset, self.adaaugment = get_dataset(
-            self.train_split, self.ada, train=True
+            tar_files=self.train_split, ada_augment=self.ada, train=True
         )
         return DataLoader(
             dataset, batch_size=self.batch_size, num_workers=self.num_workers
@@ -71,7 +71,7 @@ class ModelApp(LightningModule):
     
     def val_dataloader(self):
         dataset, _ = get_dataset(
-            self.val_split, train=False
+            tar_files=self.val_split, train=False
         )
         return DataLoader(
             dataset, batch_size=self.batch_size, num_workers=self.num_workers
@@ -79,12 +79,13 @@ class ModelApp(LightningModule):
     
     def test_dataloader(self):
         dataset, _ = get_dataset(
-            glob("../data/test/*.tar")
+            tar_files=glob("../data/test/*.tar"), train=False
         )
         return DataLoader(
             dataset, batch_size=self.batch_size, num_workers=self.num_workers
         )
-        
+    
+
     def training_step(self, batch, batch_idx):
         keys, img, label = batch
         output = self(img)
