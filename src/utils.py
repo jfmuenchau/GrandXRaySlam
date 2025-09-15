@@ -1,6 +1,9 @@
 import random
+from typing import List
+import pandas as pd
 import PIL, PIL.ImageOps, PIL.ImageEnhance, PIL.ImageDraw
-
+import torch.nn as nn
+import torch
 from torchmetrics.functional import accuracy, recall, precision, auroc
 
 def shear_x(img, magnitude):  # magnitude ∈ [-0.3, 0.3]
@@ -72,7 +75,6 @@ class AdaAugment:
         return img
 
 
-
 def calculate_metrics(prediction, ground_truth, stage):
     precision_ = precision(
         prediction, ground_truth, task="multilabel", num_labels=14
@@ -91,5 +93,43 @@ def calculate_metrics(prediction, ground_truth, stage):
         stage + "/precision":precision_,
         stage + "/recall":recall_,
         stage + "/accuracy":accuracy_,
-        stage + "/auroc":auroc_
+        stage + "_auroc":auroc_
     }
+
+
+def get_class_weights(path):
+    df = pd.read_csv(path)
+    weights = []
+    label_columns = [
+        'Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Enlarged Cardiomediastinum',
+        'Fracture', 'Lung Lesion', 'Lung Opacity', 'No Finding', 'Pleural Effusion',
+        'Pleural Other', 'Pneumonia', 'Pneumothorax', 'Support Devices'
+    ]
+
+    for label in label_columns:
+        percent = df[label].sum() / len(df)
+        weights.append(percent)
+    return weights
+
+class FocalLoss(nn.Module):
+
+    def __init__(self, weights:List=None, gamma=2.0, reduction="mean"):
+        super().__init__()
+
+        self.weights = weights
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, logit, target):
+        bce_loss = nn.functional.binary_cross_entropy_with_logits(
+            logit, target,
+            pos_weight=self.weights,
+            reduction="none"
+        )
+        probs = torch.exp(-bce_loss)
+        F_loss = (1-probs) ** self.gamma * bce_loss
+
+        if self.reduction == "mean":
+            return F_loss.mean()
+        else:
+            return F_loss.sum()
