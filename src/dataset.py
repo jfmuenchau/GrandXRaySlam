@@ -2,9 +2,10 @@ import webdataset as wds
 from torchvision import transforms
 import torch
 from typing import List
-from .utils import AdaAugment
+from .utils import *
 import numpy as np
 import pandas as pd
+import random
 
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -47,9 +48,18 @@ def get_dataset(tar_files:List, train:bool, ada_augment=False):
             return dataset, augment
 
         else:
+            def augment_sample(sample):
+                img = sample["jpg"]
+                method = random.choice(augmentation_space)
+                magntiude = random.random()
+                img = method(img, magntiude)
+                sample["jpg"] = img
+                return sample
+                
             dataset = (
                 wds.WebDataset(tar_files, shardshuffle=len(tar_files))
                 .decode("pil")
+                .map(augment_sample)
                 .to_tuple("__key__", "jpg", "cls")
                 .map_tuple(lambda k: k,
                         lambda img: transform(img),

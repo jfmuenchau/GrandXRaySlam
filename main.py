@@ -7,17 +7,16 @@ from argparse import ArgumentParser
 import numpy as np
 
 parser = ArgumentParser(prog="Training setup for GrandXray Slam Division A Challenge")
-parser.add_argument("--model", type=str, default="res18", choices=["res18", "res50", "vit_b", "vit_t"],
+parser.add_argument("--model", type=str, default="res18", choices=["res18", "res34", "res50", "vit_b", "vit_t", "effb0", "effb2"],
                     help="Model architecture to use")
 parser.add_argument("--epochs", type=int, default=15, help="Number of training epochs")
 parser.add_argument("--ada", action="store_true", help="Use adaptive data augmentation")
-parser.add_argument("--batch", type=int, default=32, help="Batch size")
+parser.add_argument("--batch", type=int, default=128, help="Batch size")
 parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
 parser.add_argument("--fold", type=int, default=0, help="Fold to use for training")
 parser.add_argument("--workers", type=int, default=2, help="Number of workers")
 parser.add_argument("--focal", action="store_true", help="Use Focal Loss instead of BCEWithLogitsLoss")
 args = parser.parse_args()
-
 
 def setup_seed(seed=42):
     torch.manual_seed(seed)

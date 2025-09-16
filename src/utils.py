@@ -1,54 +1,89 @@
-import random
 from typing import List
 import pandas as pd
-import PIL, PIL.ImageOps, PIL.ImageEnhance, PIL.ImageDraw
 import torch.nn as nn
 import torch
 from torchmetrics.functional import accuracy, recall, precision, auroc
+import random
+from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 
-def shear_x(img, magnitude):  # magnitude ∈ [-0.3, 0.3]
-    return img.transform(img.size, PIL.Image.AFFINE, (1, magnitude, 0, 0, 1, 0))
+# --- Augmentation functions ---
 
-def shear_y(img, magnitude):  # magnitude ∈ [-0.3, 0.3]
-    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, magnitude, 1, 0))
+def shear_x(img, magnitude):
+    level = magnitude * 0.3 * random.choice([-1, 1])
+    return img.transform(img.size, Image.AFFINE, (1, level, 0, 0, 1, 0))
 
-def translate_x(img, magnitude):  # magnitude ∈ [-150, 150] px
-    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, magnitude, 0, 1, 0))
+def shear_y(img, magnitude):
+    level = magnitude * 0.3 * random.choice([-1, 1])
+    return img.transform(img.size, Image.AFFINE, (1, 0, 0, level, 1, 0))
 
-def translate_y(img, magnitude):  # magnitude ∈ [-150, 150] px
-    return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, 0, 1, magnitude))
+def translate_x(img, magnitude):
+    max_shift = 0.45 * img.size[0]
+    level = magnitude * max_shift * random.choice([-1, 1])
+    return img.transform(img.size, Image.AFFINE, (1, 0, level, 0, 1, 0))
 
-def rotate(img, magnitude):  # degrees, [-30, 30]
-    return img.rotate(magnitude)
+def translate_y(img, magnitude):
+    max_shift = 0.45 * img.size[1]
+    level = magnitude * max_shift * random.choice([-1, 1])
+    return img.transform(img.size, Image.AFFINE, (1, 0, 0, 0, 1, level))
 
-def autocontrast(img, _):  
-    return PIL.ImageOps.autocontrast(img)
+def rotate(img, magnitude):
+    degrees = magnitude * 30 * random.choice([-1, 1])
+    return img.rotate(degrees)
 
-def invert(img, _):  
-    return PIL.ImageOps.invert(img)
+def color(img, magnitude):
+    enhancer = ImageEnhance.Color(img)
+    factor = 1.0 + (magnitude * random.choice([-0.9, 0.9]))
+    return enhancer.enhance(factor)
 
-def equalize(img, _):  
-    return PIL.ImageOps.equalize(img)
+def contrast(img, magnitude):
+    enhancer = ImageEnhance.Contrast(img)
+    factor = 1.0 + (magnitude * random.choice([-0.9, 0.9]))
+    return enhancer.enhance(factor)
 
-def solarize(img, magnitude):  # threshold in [0, 256]
-    return PIL.ImageOps.solarize(img, magnitude)
+def brightness(img, magnitude):
+    enhancer = ImageEnhance.Brightness(img)
+    factor = 1.0 + (magnitude * random.choice([-0.9, 0.9]))
+    return enhancer.enhance(factor)
 
-def posterize(img, magnitude):  # bits [4, 8]
-    magnitude = int(magnitude)
-    return PIL.ImageOps.posterize(img, magnitude)
+def sharpness(img, magnitude):
+    enhancer = ImageEnhance.Sharpness(img)
+    factor = 1.0 + (magnitude * random.choice([-0.9, 0.9]))
+    return enhancer.enhance(factor)
 
-def contrast(img, magnitude):  # factor ∈ [0.1, 1.9]
-    return PIL.ImageEnhance.Contrast(img).enhance(magnitude)
+def posterize(img, magnitude):
+    bits = int(round(8 - magnitude * 4))
+    return ImageOps.posterize(img, bits)
 
-def color(img, magnitude):  # factor ∈ [0.1, 1.9]
-    return PIL.ImageEnhance.Color(img).enhance(magnitude)
+def solarize(img, magnitude):
+    threshold = int(round(256 - magnitude * 256))
+    return ImageOps.solarize(img, threshold)
 
-def brightness(img, magnitude):  # factor ∈ [0.1, 1.9]
-    return PIL.ImageEnhance.Brightness(img).enhance(magnitude)
+def autocontrast(img, magnitude=None):
+    return ImageOps.autocontrast(img)
 
-def sharpness(img, magnitude):  # factor ∈ [0.1, 1.9]
-    return PIL.ImageEnhance.Sharpness(img).enhance(magnitude)
+def invert(img, magnitude=None):
+    return ImageOps.invert(img)
 
+def equalize(img, magnitude=None):
+    return ImageOps.equalize(img)
+
+def gaussian_blur(img, magnitude):
+    radius = magnitude * 2
+    return img.filter(ImageFilter.GaussianBlur(radius))
+
+def identity(img, magnitude=None):
+    return img
+
+augmentation_space = [
+    shear_x, shear_y, 
+    translate_x, translate_y,
+    rotate, autocontrast, 
+    invert, equalize, 
+    solarize, posterize, 
+    contrast, color, 
+    brightness, sharpness,
+    identity
+]
 
 class AdaAugment:
 
@@ -62,7 +97,8 @@ class AdaAugment:
             invert, equalize, 
             solarize, posterize, 
             contrast, color, 
-            brightness, sharpness
+            brightness, sharpness,
+            identity
         ]
 
     def set_magnitude(self, key, m):
@@ -123,13 +159,60 @@ class FocalLoss(nn.Module):
     def forward(self, logit, target):
         bce_loss = nn.functional.binary_cross_entropy_with_logits(
             logit, target,
-            pos_weight=self.weights,
             reduction="none"
         )
         probs = torch.exp(-bce_loss)
-        F_loss = (1-probs) ** self.gamma * bce_loss
+        F_loss = self.weights.to(target.device) * (1-probs) ** self.gamma * bce_loss
 
         if self.reduction == "mean":
             return F_loss.mean()
         else:
             return F_loss.sum()
+
+
+class ValueMemoryEMA:
+    def __init__(self, alpha):
+        """
+        alpha: EMA factor (0 < alpha < 1)
+        """
+        self.alpha = alpha
+        self.values = {}  # stores EMA per key
+
+    def __call__(self, keys, vals):
+        """
+        keys: list of sample identifiers
+        vals: torch.Tensor of shape (len(keys), D)
+        Returns: new EMA values, old stored values
+        """
+        stored_list = []
+        new_list = []
+
+        for i, key in enumerate(keys):
+            val = vals[i]
+            if key not in self.values:
+                # initialize first EMA as the current value
+                self.values[key] = val.clone()
+                old = torch.tensor([0])
+            else:
+                old = self.values[key]
+                # EMA update
+                self.values[key] = self.alpha * old + (1 - self.alpha) * val
+
+            stored_list.append(old.unsqueeze(0))
+            new_list.append(self.values[key].unsqueeze(0))
+
+        stored = torch.cat(stored_list, dim=0)
+        new = torch.cat(new_list, dim=0)
+        return new, stored
+
+    def get(self, key):
+        """
+        Access the current EMA for a single key
+        """
+        return self.values.get(key, None)
+
+    def get_multi(self, keys):
+        """
+        Access current EMA for multiple keys
+        """
+        return torch.stack([self.values[k] for k in keys])

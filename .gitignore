@@ -5,6 +5,8 @@ data/*.csv
 
 __pycache__/
 
-lightning_logs/
+logs/
 
 weights/
+
+papers/
