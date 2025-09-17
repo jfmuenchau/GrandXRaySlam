@@ -6,7 +6,6 @@ from torchmetrics.functional import accuracy, recall, precision, auroc
 import random
 from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 
-# --- Augmentation functions ---
 
 def shear_x(img, magnitude):
     level = magnitude * 0.3 * random.choice([-1, 1])
@@ -17,23 +16,18 @@ def shear_y(img, magnitude):
     return img.transform(img.size, Image.AFFINE, (1, 0, 0, level, 1, 0))
 
 def translate_x(img, magnitude):
-    max_shift = 0.45 * img.size[0]
+    max_shift = 0.3 * img.size[0]
     level = magnitude * max_shift * random.choice([-1, 1])
     return img.transform(img.size, Image.AFFINE, (1, 0, level, 0, 1, 0))
 
 def translate_y(img, magnitude):
-    max_shift = 0.45 * img.size[1]
+    max_shift = 0.3 * img.size[1]
     level = magnitude * max_shift * random.choice([-1, 1])
     return img.transform(img.size, Image.AFFINE, (1, 0, 0, 0, 1, level))
 
 def rotate(img, magnitude):
     degrees = magnitude * 30 * random.choice([-1, 1])
     return img.rotate(degrees)
-
-def color(img, magnitude):
-    enhancer = ImageEnhance.Color(img)
-    factor = 1.0 + (magnitude * random.choice([-0.9, 0.9]))
-    return enhancer.enhance(factor)
 
 def contrast(img, magnitude):
     enhancer = ImageEnhance.Contrast(img)
@@ -50,20 +44,6 @@ def sharpness(img, magnitude):
     factor = 1.0 + (magnitude * random.choice([-0.9, 0.9]))
     return enhancer.enhance(factor)
 
-def posterize(img, magnitude):
-    bits = int(round(8 - magnitude * 4))
-    return ImageOps.posterize(img, bits)
-
-def solarize(img, magnitude):
-    threshold = int(round(256 - magnitude * 256))
-    return ImageOps.solarize(img, threshold)
-
-def autocontrast(img, magnitude=None):
-    return ImageOps.autocontrast(img)
-
-def invert(img, magnitude=None):
-    return ImageOps.invert(img)
-
 def equalize(img, magnitude=None):
     return ImageOps.equalize(img)
 
@@ -77,12 +57,9 @@ def identity(img, magnitude=None):
 augmentation_space = [
     shear_x, shear_y, 
     translate_x, translate_y,
-    rotate, autocontrast, 
-    invert, equalize, 
-    solarize, posterize, 
-    contrast, color, 
-    brightness, sharpness,
-    identity
+    rotate, equalize, 
+    contrast, brightness, 
+    sharpness, identity
 ]
 
 class AdaAugment:
@@ -93,12 +70,9 @@ class AdaAugment:
         self.transforms = [
             shear_x, shear_y, 
             translate_x, translate_y,
-            rotate, autocontrast, 
-            invert, equalize, 
-            solarize, posterize, 
-            contrast, color, 
-            brightness, sharpness,
-            identity
+            rotate, equalize, 
+            contrast, brightness, 
+            sharpness, identity
         ]
 
     def set_magnitude(self, key, m):
@@ -146,6 +120,7 @@ def get_class_weights(path):
         percent = df[label].sum() / len(df)
         weights.append(percent)
     return weights
+
 
 class FocalLoss(nn.Module):
 
