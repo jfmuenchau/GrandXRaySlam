@@ -6,20 +6,23 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from .dataset import *
 from .utils import *
 from .model import *
+from .agent import *
 from glob import glob
 from sklearn.model_selection import KFold
 
 models_ = {
-    "res18": get_resnet18,
-    "res50": get_resnet50,
-    "vit_b": get_vit_base,
-    "vit_t": get_vit_tiny
+    "res18": (get_resnet18, 512),
+    "effb0": (get_effnetb0, 1280),
+    "swin" : (get_swin, 768),
+    "convnext" : (get_convnext_tiny, 768),
+    "coat": (get_coatnet, 1536)
 }
 
 class ModelApp(LightningModule):
     def __init__(self, batch_size:int, lr:float, model:str, weights:List, focal:bool, ada=False, fold=0, num_workers=2):
         super().__init__()
-        self.model = models_[model](fine_tune=True)
+        get_model, in_features = models_[model]
+        self.model = get_model(fine_tune=True)
         self.batch_size = batch_size
         self.lr = lr
 
@@ -28,6 +31,8 @@ class ModelApp(LightningModule):
         self.train_split, self.val_split = self._set_up_datasets(fold)
         self.weights = weights
         self._set_up_loss_fn(focal)
+        if ada:
+            self.agent = Agent(in_features, out_features=1)
 
     def forward(self, x):
         return self.model(x)
@@ -85,8 +90,32 @@ class ModelApp(LightningModule):
             dataset, batch_size=self.batch_size, num_workers=self.num_workers
         )
     
-
     def training_step(self, batch, batch_idx):
+        if self.ada:
+            pass
+
+        else:
+            loss = self.train_step(batch)
+        return loss
+    
+    def ada_train_step(self, batch):
+        keys, img, label = batch
+        output = self(img)
+
+        loss = self.loss_fn(output, label.float())
+        probs = torch.sigmoid(output)
+        # action
+        # transfer action to AdaAugment
+        # difference between magnitude and transform modeling
+        # send loss to Agent to update Critic and Actor
+
+        self.log(name="train_loss", value=loss, on_epoch=True, on_step=False)
+        metrics = calculate_metrics(probs, label, stage="train")
+        self.log_dict(metrics, on_step=False, on_epoch=True)
+        return loss
+
+    
+    def train_step(self, batch):
         keys, img, label = batch
         output = self(img)
 
@@ -96,7 +125,7 @@ class ModelApp(LightningModule):
         metrics = calculate_metrics(probs, label, stage="train")
         self.log_dict(metrics, on_step=False, on_epoch=True)
         return loss
-    
+
     def validation_step(self, batch, batch_idx):
         _, img, label = batch
         output = self(img)

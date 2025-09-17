@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .utils import ValueMemoryEMA
+from .utils import ValueMemoryEMA, augmentation_space
 
 
 class Actor(nn.Module):
@@ -52,7 +52,7 @@ class Controller(nn.Module):
         self.layer_norm1 = nn.LayerNorm(hidden)
         self.linear2 = nn.Linear(hidden, hidden)
         self.layer_norm2 = nn.LayerNorm(hidden)
-        self.head = nn.Linear(hidden, 1)
+        self.head = nn.Linear(hidden, len(augmentation_space))
 
     def forward(self, x):
         x = torch.relu(self.linear1(x))
@@ -69,10 +69,13 @@ class Controller(nn.Module):
 
 class Agent:
 
-    def __init__(self, in_features, out_features, control=False):
+    def __init__(self, in_features, control=False):
         self.val_memory = ValueMemoryEMA(alpha=0.3)
+        self.loss_memory = ValueMemoryEMA(alpha=0.3)
 
         self.critic = Critic(in_features=in_features, hidden=128)
+
+        self.store_ = {}
 
         if control:
             self.actor = Controller(in_features=in_features, hidden=128)
@@ -80,8 +83,25 @@ class Agent:
         else:
             self.actor = Actor(in_features=in_features, hidden=128, out_features=1) 
 
-    def action(self, key, img):
-        pass
+        self.actor_optimizer = torch.optim.Adam(
+            params=self.actor.parameters(), lr=3e-5, weight_decay=5e-4
+        )
+        self.actor_optimizer = torch.optim.Adam(
+            params=self.critic.parameters(), lr=3e-5, weight_decay=5e-4
+        )
 
-    def update(self):
-        pass
+    def action(self, state):
+        dist = self.actor.get_dist(state.detach())
+        action = dist.sample()
+        self.store_["action"] = action
+        self.store_["dist"] = dist
+        return action
+
+    def update(self, key, state, sample_loss):
+        dist, action = self.store_["dist"], self.store_["action"]
+        
+        value = self.critic(state)
+
+        ema_value = self.val_memory.get_multi(key)
+
+        advantage = 0.99 * value - ema_value

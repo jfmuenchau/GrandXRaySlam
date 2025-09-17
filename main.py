@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 import numpy as np
 
 parser = ArgumentParser(prog="Training setup for GrandXray Slam Division A Challenge")
-parser.add_argument("--model", type=str, default="res18", choices=["res18", "res34", "res50", "vit_b", "vit_t", "effb0", "effb2"],
+parser.add_argument("--model", type=str, default="res18", choices=["res18", "effb0", "swin", "coat", "convnext"],
                     help="Model architecture to use")
 parser.add_argument("--epochs", type=int, default=15, help="Number of training epochs")
 parser.add_argument("--ada", action="store_true", help="Use adaptive data augmentation")
