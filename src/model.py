@@ -81,23 +81,3 @@ def get_convnext_tiny(num_classes=14, fine_tune=True):
 
     model.classifier[2] = nn.Linear(in_features=768, out_features=num_classes)
     return model
-
-def get_swin(num_classes=14, fine_tune=True):
-    model = timm.create_model("swin_s3_tiny_224", pretrained=True, num_classes=num_classes)
-
-    if fine_tune:
-        freeze_all(model)
-        for param in model.layers[-1].blocks[-2:].parameters():
-            param.requires_grad = True
-
-    return model
-
-def get_coatnet(num_classes=14, fine_tune=True):
-    model = timm.create_model("coatnet_3_rw_224.sw_in12k", pretrained=True, num_classes=num_classes)
-
-    if fine_tune:
-        freeze_all(model)
-        for param in model.stages[-1].parameters():
-            param.requires_grad = True
-
-    return model

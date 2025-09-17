@@ -64,7 +64,7 @@ augmentation_space = [
 
 class AdaAugment:
 
-    def __init__(self):
+    def __init__(self, rand_m, rand_t):
         self.key_transform = {}
         self.key_magnitude = {}
         self.transforms = [
@@ -74,15 +74,37 @@ class AdaAugment:
             contrast, brightness, 
             sharpness, identity
         ]
+        self.rand_m = rand_m
+        self.rand_t = rand_t
 
-    def set_magnitude(self, key, m):
-        self.key_magnitude[key] = m
-    
-    def set_transform(self, key, transform_idx):
-        self.key_transform[key] = transform_idx
+    def set(self, keys, m, transform_idx=None):
+        for i, key in enumerate(keys):
+            self.key_magnitude[key] = m[i].cpu().detach()
+        
+        if transform_idx is not None:
+            for i, key in enumerate(keys):
+                self.key_transform[key] = transform_idx[i].cpu().detach()
 
     def __call__(self, key, img):
-        return img
+        if key not in self.key_magnitude:
+            if self.rand_m:
+                p = random.random()
+                m = random.random()
+                if p < 0.4:
+                    return img
+            else:
+                m = 0
+        else:
+            m = self.key_magnitude[key].item()
+        if key not in self.key_transform:
+            if self.rand_t:
+                t = random.choice(self.transforms)
+            else:
+                t = self.transforms[-1]
+        else:
+            t = self.key_transform[key].item()
+
+        return t(img, m)
 
 
 def calculate_metrics(prediction, ground_truth, stage):
@@ -141,6 +163,8 @@ class FocalLoss(nn.Module):
 
         if self.reduction == "mean":
             return F_loss.mean()
+        elif self.reduction == "none":
+            return F_loss   
         else:
             return F_loss.sum()
 
@@ -167,7 +191,7 @@ class ValueMemoryEMA:
             if key not in self.values:
                 # initialize first EMA as the current value
                 self.values[key] = val.clone()
-                old = torch.tensor([0])
+                old = val.clone()
             else:
                 old = self.values[key]
                 # EMA update

@@ -12,14 +12,14 @@ from sklearn.model_selection import KFold
 
 models_ = {
     "res18": (get_resnet18, 512),
+    "res34": (get_resnet34, 512),
+    "vit_t":(get_vit_tiny, 192),
     "effb0": (get_effnetb0, 1280),
-    "swin" : (get_swin, 768),
-    "convnext" : (get_convnext_tiny, 768),
-    "coat": (get_coatnet, 1536)
+    "convnext" : (get_convnext_tiny, 768, ),
 }
 
 class ModelApp(LightningModule):
-    def __init__(self, batch_size:int, lr:float, model:str, weights:List, focal:bool, ada=False, fold=0, num_workers=2):
+    def __init__(self, batch_size:int, lr:float, model:str, weights:List, focal:bool, fine_tune, ada=False, fold=0, num_workers=2):
         super().__init__()
         get_model, in_features = models_[model]
         self.model = get_model(fine_tune=True)
@@ -32,10 +32,31 @@ class ModelApp(LightningModule):
         self.weights = weights
         self._set_up_loss_fn(focal)
         if ada:
-            self.agent = Agent(in_features, out_features=1)
+            self.agent = Agent(in_features, out_features=1, actor=True)
 
     def forward(self, x):
         return self.model(x)
+
+    def _register_head_hook(self):
+        self.state = {}
+        self._hook_handle = None  # Store the hook handle
+
+        def hook(module, input, output):
+            self.state['head_input'] = input[0].detach()
+
+        if isinstance(self.model, models.ResNet):
+            self._hook_handle = self.model.fc.register_forward_hook(hook)
+        elif isinstance(self.model, models.EfficientNet):
+            self._hook_handle = self.model.classifier[-1].register_forward_hook(hook)
+        elif isinstance(self.model, models.ConvNeXt):
+            self._hook_handle = self.model.classifier[2].register_forward_hook(hook)
+        elif isinstance(self.model, timm.models.vision_transformer.VisionTransformer):
+            self._hook_handle = self.model.head.register_forward_hook(hook)
+
+    def _remove_head_hook(self):
+        if hasattr(self, '_hook_handle') and self._hook_handle is not None:
+            self._hook_handle.remove()
+            self._hook_handle = None
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -62,9 +83,9 @@ class ModelApp(LightningModule):
     
     def _set_up_loss_fn(self, focal:bool=False):
         if focal:
-            self.loss_fn = FocalLoss(weights=self.weights)
+            self.loss_fn = FocalLoss(weights=self.weights, reduction="none")
         else:
-            self.loss_fn = nn.BCEWithLogitsLoss(pos_weight=self.weights)
+            self.loss_fn = nn.BCEWithLogitsLoss(pos_weight=self.weights, reduction="none")
 
     def train_dataloader(self):
         dataset, self.adaaugment = get_dataset(
@@ -90,30 +111,50 @@ class ModelApp(LightningModule):
             dataset, batch_size=self.batch_size, num_workers=self.num_workers
         )
     
+    def on_train_epoch_start(self):
+        if self.ada:
+            self.r_weight = 1 - (self.trainer.current_epoch / self.trainer.max_epochs)
+            self._register_head_hook()
+    
+    def on_train_epoch_end(self):
+        if self.ada:
+            self._remove_head_hook()
+
     def training_step(self, batch, batch_idx):
         if self.ada:
-            pass
+            loss = self.ada_train_step(batch)
 
         else:
             loss = self.train_step(batch)
+        self.log(name="train_loss", value=loss, on_epoch=True, on_step=False)
+
         return loss
     
     def ada_train_step(self, batch):
         keys, img, label = batch
         output = self(img)
+        state = self.state['head_input']
 
         loss = self.loss_fn(output, label.float())
+        _, ema_loss = self.agent.loss_memory(keys, loss)
         probs = torch.sigmoid(output)
-        # action
-        # transfer action to AdaAugment
-        # difference between magnitude and transform modeling
-        # send loss to Agent to update Critic and Actor
-
-        self.log(name="train_loss", value=loss, on_epoch=True, on_step=False)
         metrics = calculate_metrics(probs, label, stage="train")
         self.log_dict(metrics, on_step=False, on_epoch=True)
-        return loss
 
+        action, transform_idx = self.agent.action(state)
+        self.adaaugment.set(keys, action, transform_idx)
+
+        entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1)
+        reward = self.r_weight * (loss - ema_loss) + (1 - self.r_weight) * entropy
+
+        self.log(name="reward", value=reward.mean())
+        actor_loss, critic_loss = self.agent.update(keys, state, loss, reward)
+
+        self.log_dict({
+            "actor_loss":actor_loss,
+            "critic_loss":critic_loss
+        }, on_epoch=True, on_step=False)
+        return loss.mean()
     
     def train_step(self, batch):
         keys, img, label = batch
@@ -121,17 +162,17 @@ class ModelApp(LightningModule):
 
         loss = self.loss_fn(output, label.float())
         probs = torch.sigmoid(output)
-        self.log(name="train_loss", value=loss, on_epoch=True, on_step=False)
+        
         metrics = calculate_metrics(probs, label, stage="train")
         self.log_dict(metrics, on_step=False, on_epoch=True)
-        return loss
-
+        return loss.mean()
+    
     def validation_step(self, batch, batch_idx):
         _, img, label = batch
         output = self(img)
         loss = self.loss_fn(output, label.float())
         probs = torch.sigmoid(output)
 
-        self.log(name="val_loss", value=loss, on_epoch=True, on_step=False, prog_bar=True)
+        self.log(name="val_loss", value=loss.mean(), on_epoch=True, on_step=False, prog_bar=True)
         metrics = calculate_metrics(probs, label, stage="val")
         self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True)
