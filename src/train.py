@@ -15,7 +15,7 @@ models_ = {
     "res34": (get_resnet34, 512),
     "vit_t":(get_vit_tiny, 192),
     "effb0": (get_effnetb0, 1280),
-    "convnext" : (get_convnext_tiny, 768, ),
+    "convnext" : (get_convnext_tiny, 768),
 }
 
 class ModelApp(LightningModule):
@@ -63,7 +63,7 @@ class ModelApp(LightningModule):
         optimizer = torch.optim.Adam(
             params=self.model.parameters(), 
             lr=self.lr, 
-            weight_decay=5e-4
+            #weight_decay=1e-5
         )
         return {
             "optimizer":optimizer,
@@ -136,7 +136,7 @@ class ModelApp(LightningModule):
         state = self.state['head_input']
 
         loss = self.loss_fn(output, label.float())
-        _, ema_loss = self.agent.loss_memory(keys, loss.detach())
+        prev_loss = self.agent.loss_memory(keys, loss.detach())
         probs = torch.sigmoid(output)
         metrics = calculate_metrics(probs, label, stage="train")
         self.log_dict(metrics, on_step=False, on_epoch=True)
@@ -145,10 +145,10 @@ class ModelApp(LightningModule):
         self.adaaugment.set(keys, action, transform_idx)
 
         entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1).unsqueeze(1)
-        reward = self.r_weight * (loss.detach().mean() - ema_loss.mean()) + (1 - self.r_weight) * entropy
+        reward = self.r_weight * (loss.detach().mean() - prev_loss.mean()) + (1 - self.r_weight) * entropy
 
         self.log(name="reward", value=reward.mean())
-        actor_loss, critic_loss = self.agent.update(keys, state, loss, reward)
+        actor_loss, critic_loss = self.agent.update(keys, state, reward)
 
         self.log_dict({
             "actor_loss":actor_loss,

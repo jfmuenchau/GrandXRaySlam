@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .utils import ValueMemoryEMA, augmentation_space
+from .utils import ValueMemoryEMA, ValueMemory, augmentation_space
 
 
 class Actor(nn.Module):
@@ -72,8 +72,8 @@ class Agent(nn.Module):
 
     def __init__(self, in_features, control=False, actor=False):
         super().__init__()
-        self.val_memory = ValueMemoryEMA(alpha=0.3)
-        self.loss_memory = ValueMemoryEMA(alpha=0.3)
+        self.val_memory = ValueMemory()
+        self.loss_memory = ValueMemory()
 
         self.critic = Critic(in_features=in_features, hidden=128)
 
@@ -110,23 +110,24 @@ class Agent(nn.Module):
 
         return action_actor, action_controller
 
-    def update(self, key, state, sample_loss, reward):
+    def update(self, key, state, reward):
         dist, action = self.store_["dist"], self.store_["action"]
         log_prob = dist.log_prob(action)
     
         value = self.critic(state)
-        _, ema_value = self.val_memory(key, value)
+        prev_state = self.val_memory(key, value)
+        prev_value = self.critic(prev_state)
         
         with torch.no_grad():
             td_target = reward + 0.99 * value
 
-        actor_loss = -(log_prob * (td_target - ema_value.detach())).mean()
+        actor_loss = -(log_prob * (td_target - prev_value.detach())).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        critic_loss = torch.nn.functional.mse_loss(td_target, ema_value)
+        critic_loss = torch.nn.functional.mse_loss(td_target, prev_value)
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
