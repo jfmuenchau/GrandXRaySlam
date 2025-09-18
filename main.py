@@ -16,6 +16,7 @@ parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
 parser.add_argument("--fold", type=int, default=0, help="Fold to use for training")
 parser.add_argument("--workers", type=int, default=2, help="Number of workers")
 parser.add_argument("--focal", action="store_true", help="Use Focal Loss instead of BCEWithLogitsLoss")
+parser.add_argument("--finetune", action="store_true", help="Enable fine-tuning (unfreeze layers)")
 args = parser.parse_args()
 
 def setup_seed(seed=42):
@@ -39,7 +40,8 @@ def main():
         ada=args.ada, 
         model=args.model,
         num_workers=args.workers,
-        focal=args.focal
+        focal=args.focal,
+        fine_tune=args.finetune
     )
 
     logger = TensorBoardLogger(

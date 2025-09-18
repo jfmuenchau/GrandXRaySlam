@@ -18,7 +18,8 @@ class Actor(nn.Module):
         x = self.layer_norm1(x)
         x = torch.relu(self.linear2(x))
         x = self.layer_norm2(x)
-        return torch.softmax(self.alpha_head(x)) + 1, torch.softmax(self.beta_head) + 1
+        return torch.softmax(self.alpha_head(x), dim=-1) + 1, torch.softmax(self.beta_head(x), dim=-1) + 1
+
     
     def get_dist(self, x):
         alpha, beta = self(x)
@@ -78,12 +79,12 @@ class Agent(nn.Module):
 
         self.store_ = {}
 
+        self.control_ = control
+        self.actor_ = actor
         if control:
-            self.control_ = True
             self.controller = Controller(in_features=in_features, hidden=128)
 
         if actor:
-            self.actor_ = True
             self.actor = Actor(in_features=in_features, hidden=128, out_features=1) 
 
         self.actor_optimizer = torch.optim.Adam(

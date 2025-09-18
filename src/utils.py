@@ -215,3 +215,47 @@ class ValueMemoryEMA:
         Access current EMA for multiple keys
         """
         return torch.stack([self.values[k] for k in keys])
+    
+
+class ValueMemory:
+    def __init__(self):
+        """
+        Stores the last value per key (no EMA).
+        """
+        self.values = {}
+
+    def __call__(self, keys, vals):
+        """
+        keys: list of sample identifiers
+        vals: torch.Tensor of shape (len(keys), D)
+        Returns: current stored values, previous stored values
+        """
+        stored_list = []
+        new_list = []
+
+        for i, key in enumerate(keys):
+            val = vals[i]
+            if key not in self.values:
+                old = val.clone()  # nothing stored yet → use current
+            else:
+                old = self.values[key]
+
+            self.values[key] = val  # overwrite with last value
+
+            stored_list.append(old.unsqueeze(0))
+            new_list.append(self.values[key].unsqueeze(0))
+
+        stored = torch.cat(stored_list, dim=0)  # previous values
+        return stored
+
+    def get(self, key):
+        """
+        Access the stored value for a single key
+        """
+        return self.values.get(key, None)
+
+    def get_multi(self, keys):
+        """
+        Access stored values for multiple keys
+        """
+        return torch.stack([self.values[k] for k in keys])

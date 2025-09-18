@@ -32,7 +32,8 @@ class ModelApp(LightningModule):
         self.weights = weights
         self._set_up_loss_fn(focal)
         if ada:
-            self.agent = Agent(in_features, out_features=1, actor=True)
+            self.r_weight = 0.7
+            self.agent = Agent(in_features, actor=True, control=False)
 
     def forward(self, x):
         return self.model(x)
@@ -113,7 +114,6 @@ class ModelApp(LightningModule):
     
     def on_train_epoch_start(self):
         if self.ada:
-            self.r_weight = 1 - (self.trainer.current_epoch / self.trainer.max_epochs)
             self._register_head_hook()
     
     def on_train_epoch_end(self):
@@ -136,7 +136,7 @@ class ModelApp(LightningModule):
         state = self.state['head_input']
 
         loss = self.loss_fn(output, label.float())
-        _, ema_loss = self.agent.loss_memory(keys, loss)
+        _, ema_loss = self.agent.loss_memory(keys, loss.detach())
         probs = torch.sigmoid(output)
         metrics = calculate_metrics(probs, label, stage="train")
         self.log_dict(metrics, on_step=False, on_epoch=True)
@@ -144,15 +144,16 @@ class ModelApp(LightningModule):
         action, transform_idx = self.agent.action(state)
         self.adaaugment.set(keys, action, transform_idx)
 
-        entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1)
-        reward = self.r_weight * (loss - ema_loss) + (1 - self.r_weight) * entropy
+        entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1).unsqueeze(1)
+        reward = self.r_weight * (loss.detach().mean() - ema_loss.mean()) + (1 - self.r_weight) * entropy
 
         self.log(name="reward", value=reward.mean())
         actor_loss, critic_loss = self.agent.update(keys, state, loss, reward)
 
         self.log_dict({
             "actor_loss":actor_loss,
-            "critic_loss":critic_loss
+            "critic_loss":critic_loss,
+            "magnitude":action.mean()
         }, on_epoch=True, on_step=False)
         return loss.mean()
     
