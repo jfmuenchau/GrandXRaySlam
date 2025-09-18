@@ -17,6 +17,8 @@ parser.add_argument("--fold", type=int, default=0, help="Fold to use for trainin
 parser.add_argument("--workers", type=int, default=2, help="Number of workers")
 parser.add_argument("--focal", action="store_true", help="Use Focal Loss instead of BCEWithLogitsLoss")
 parser.add_argument("--finetune", action="store_true", help="Enable fine-tuning (unfreeze layers)")
+parser.add_argument("--randm", action="store_true", help="Use random augmentation magnitudes")
+parser.add_argument("--randt", action="store_true", help="Use random transformations")
 args = parser.parse_args()
 
 def setup_seed(seed=42):
@@ -41,7 +43,8 @@ def main():
         model=args.model,
         num_workers=args.workers,
         focal=args.focal,
-        fine_tune=args.finetune
+        fine_tune=args.finetune,
+        rand_m_t=(args.randm, args.randt)
     )
 
     logger = TensorBoardLogger(

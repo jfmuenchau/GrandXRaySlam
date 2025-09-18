@@ -9,18 +9,14 @@ class Actor(nn.Module):
         self.linear1 = nn.Linear(in_features, hidden)
         self.layer_norm1 = nn.LayerNorm(hidden)
         self.linear2 = nn.Linear(hidden, hidden)
-        self.layer_norm2 = nn.LayerNorm(hidden)
         self.alpha_head = nn.Linear(hidden, out_features)
         self.beta_head = nn.Linear(hidden, out_features)
 
     def forward(self, x):
-        x = torch.relu(self.linear1(x))
-        x = self.layer_norm1(x)
+        x = torch.relu(self.linear1(self.layer_norm1(x)))
         x = torch.relu(self.linear2(x))
-        x = self.layer_norm2(x)
         return torch.softmax(self.alpha_head(x), dim=-1) + 1, torch.softmax(self.beta_head(x), dim=-1) + 1
 
-    
     def get_dist(self, x):
         alpha, beta = self(x)
         dist = torch.distributions.Beta(alpha, beta)
@@ -34,14 +30,11 @@ class Critic(nn.Module):
         self.linear1 = nn.Linear(in_features, hidden)
         self.layer_norm1 = nn.LayerNorm(hidden)
         self.linear2 = nn.Linear(hidden, hidden)
-        self.layer_norm2 = nn.LayerNorm(hidden)
         self.head = nn.Linear(hidden, 1)
 
     def forward(self, x):
-        x = torch.relu(self.linear1(x))
-        x = self.layer_norm1(x)
+        x = torch.relu(self.linear1(self.layer_norm1(x)))
         x = torch.relu(self.linear2(x))
-        x = self.layer_norm2(x)
         return self.head(x)
 
 
@@ -52,14 +45,11 @@ class Controller(nn.Module):
         self.linear1 = nn.Linear(in_features, hidden)
         self.layer_norm1 = nn.LayerNorm(hidden)
         self.linear2 = nn.Linear(hidden, hidden)
-        self.layer_norm2 = nn.LayerNorm(hidden)
         self.head = nn.Linear(hidden, len(augmentation_space))
 
     def forward(self, x):
-        x = torch.relu(self.linear1(x))
-        x = self.layer_norm1(x)
+        x = torch.relu(self.linear1(self.layer_norm1(x)))
         x = torch.relu(self.linear2(x))
-        x = self.layer_norm2(x)
         return self.head(x)
     
     def get_dist(self, x):
@@ -111,15 +101,29 @@ class Agent(nn.Module):
         return action_actor, action_controller
 
     def update(self, key, state, reward):
-        dist, action = self.store_["dist"], self.store_["action"]
-        log_prob = dist.log_prob(action)
-    
         value = self.critic(state)
-        prev_state = self.val_memory(key, value)
+        prev_state = self.val_memory(key, state)
         prev_value = self.critic(prev_state)
         
         with torch.no_grad():
             td_target = reward + 0.99 * value
+
+        if self.actor_ and self.control_:
+            dist_actor, action_actor = self.store_["dist_actor"], self.store_["action_actor"]
+            dist_control, action_control = self.store_["dist_controller"], self.store_["action_controller"]
+
+            log_prob_actor = dist_actor.log_prob(action_actor)
+            log_prob_control = dist_control.log_prob(action_control)
+
+            log_prob = log_prob_actor + log_prob_control  
+
+        elif self.actor_:
+            dist, action = self.store_["dist_actor"], self.store_["action_actor"]
+            log_prob = dist.log_prob(action)
+
+        elif self.control_:
+            dist, action = self.store_["dist_controller"], self.store_["action_controller"]
+            log_prob = dist.log_prob(action)
 
         actor_loss = -(log_prob * (td_target - prev_value.detach())).mean()
 

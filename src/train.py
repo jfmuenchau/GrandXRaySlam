@@ -19,7 +19,7 @@ models_ = {
 }
 
 class ModelApp(LightningModule):
-    def __init__(self, batch_size:int, lr:float, model:str, weights:List, focal:bool, fine_tune, ada=False, fold=0, num_workers=2):
+    def __init__(self, batch_size:int, lr:float, model:str, weights:List, focal:bool, fine_tune, ada=False, fold=0, num_workers=2, rand_m_t=(1,0)):
         super().__init__()
         get_model, in_features = models_[model]
         self.model = get_model(fine_tune=True)
@@ -33,7 +33,11 @@ class ModelApp(LightningModule):
         self._set_up_loss_fn(focal)
         if ada:
             self.r_weight = 0.7
-            self.agent = Agent(in_features, actor=True, control=False)
+            self.rand_m , self.rand_t = rand_m_t
+            actor_flag = not bool(self.rand_m)
+            control_flag = not bool(self.rand_t)
+
+            self.agent = Agent(in_features, actor=actor_flag, control=control_flag)
 
     def forward(self, x):
         return self.model(x)
@@ -90,7 +94,7 @@ class ModelApp(LightningModule):
 
     def train_dataloader(self):
         dataset, self.adaaugment = get_dataset(
-            tar_files=self.train_split, ada_augment=self.ada, train=True
+            tar_files=self.train_split, ada_augment=self.ada, train=True, rand_m_t=(self.rand_m, self.rand_t)
         )
         return DataLoader(
             dataset, batch_size=self.batch_size, num_workers=self.num_workers
@@ -145,7 +149,7 @@ class ModelApp(LightningModule):
         self.adaaugment.set(keys, action, transform_idx)
 
         entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1).unsqueeze(1)
-        reward = self.r_weight * (loss.detach().mean() - prev_loss.mean()) + (1 - self.r_weight) * entropy
+        reward = self.r_weight * (loss.detach().mean() - prev_loss.mean()) + (1- self.r_weight) * entropy
 
         self.log(name="reward", value=reward.mean())
         actor_loss, critic_loss = self.agent.update(keys, state, reward)

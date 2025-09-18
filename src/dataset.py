@@ -20,14 +20,15 @@ def parse_labels(label_bytes):
 
 wds.autodecode.decoders["cls"] = lambda data: data  # keep bytes
 
-def get_dataset(tar_files:List, train:bool, ada_augment=False):
+def get_dataset(tar_files:List, train:bool, ada_augment=False, rand_m_t=(0,1)):
     """
     tar_files: List of tar files to include in the dataset
     ada_augment: True if AdaAugment should be applied
     """
     if train:
         if ada_augment:
-            augment = AdaAugment()
+            rand_m, rand_t = rand_m_t
+            augment = AdaAugment(rand_m, rand_t)
 
             def augment_sample(sample):
                 key = sample["__key__"]
