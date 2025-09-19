@@ -5,6 +5,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor, EarlyStopping, Mode
 from lightning.pytorch.loggers import TensorBoardLogger
 from argparse import ArgumentParser
 import numpy as np
+import pandas as pd
 
 parser = ArgumentParser(prog="Training setup for GrandXray Slam Division A Challenge")
 parser.add_argument("--model", type=str, default="res18", choices=["res18", "effb0", "convnext"],
@@ -33,7 +34,7 @@ def setup_seed(seed=42):
 def main():
 
     setup_seed()
-    weights = torch.tensor(get_class_weights("data/train1.csv"), dtype=torch.float32)
+    weights = torch.tensor(get_class_weights(pd.read_csv("data/train1.csv")), dtype=torch.float32)
 
     model = ModelApp(
         batch_size=args.batch,

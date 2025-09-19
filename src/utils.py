@@ -141,7 +141,7 @@ def get_class_weights(df):
     ]
 
     for label in label_columns:
-        weight = len(df) / df[label].sum()
+        weight = len(df) / (df[label].sum() + 1e-6)
         weights.append(weight)
 
     return weights
