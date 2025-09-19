@@ -86,25 +86,28 @@ class AdaAugment:
                 self.key_transform[key] = transform_idx[i].cpu().detach()
 
     def __call__(self, key, img):
-        if key not in self.key_magnitude:
+        # --- Magnitude ---
+        m = self.key_magnitude.get(key)
+        if m is None:  
             if self.rand_m:
-                p = random.random()
+                if random.random() < 0.4:
+                    return img  # skip transform
                 m = random.random()
-                if p < 0.4:
-                    return img
             else:
                 m = 0
         else:
-            m = self.key_magnitude[key].item()
-        if key not in self.key_transform:
-            if self.rand_t:
-                t = random.choice(self.transforms)
-            else:
-                t = self.transforms[-1]
-        else:
-            t = self.key_transform[key].item()
+            m = float(m)
 
+        # --- Transform ---
+        t = self.key_transform.get(key)
+        if t is None:
+            t = random.choice(self.transforms) if self.rand_t else self.transforms[-1]
+        else:
+            t = self.transforms[int(t)]
+
+        # --- Apply ---
         return t(img, m)
+
 
 
 def calculate_metrics(prediction, ground_truth, stage):

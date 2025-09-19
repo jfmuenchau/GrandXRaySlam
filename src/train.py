@@ -22,7 +22,7 @@ class ModelApp(LightningModule):
     def __init__(self, batch_size:int, lr:float, model:str, weights:List, focal:bool, fine_tune, ada=False, fold=0, num_workers=2, rand_m_t=(1,0)):
         super().__init__()
         get_model, in_features = models_[model]
-        self.model = get_model(fine_tune=True)
+        self.model = get_model(fine_tune=fine_tune)
         self.batch_size = batch_size
         self.lr = lr
 
@@ -31,9 +31,10 @@ class ModelApp(LightningModule):
         self.train_split, self.val_split = self._set_up_datasets(fold)
         self.weights = weights
         self._set_up_loss_fn(focal)
+        self.rand_m , self.rand_t = rand_m_t
+
         if ada:
             self.r_weight = 0.7
-            self.rand_m , self.rand_t = rand_m_t
             actor_flag = not bool(self.rand_m)
             control_flag = not bool(self.rand_t)
 
