@@ -132,8 +132,7 @@ def calculate_metrics(prediction, ground_truth, stage):
     }
 
 
-def get_class_weights(path):
-    df = pd.read_csv(path)
+def get_class_weights(df):
     weights = []
     label_columns = [
         'Atelectasis', 'Cardiomegaly', 'Consolidation', 'Edema', 'Enlarged Cardiomediastinum',
@@ -142,8 +141,9 @@ def get_class_weights(path):
     ]
 
     for label in label_columns:
-        percent = df[label].sum() / len(df)
-        weights.append(percent)
+        weight = len(df) / df[label].sum()
+        weights.append(weight)
+
     return weights
 
 
