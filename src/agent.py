@@ -6,8 +6,8 @@ from .utils import ValueMemoryEMA, ValueMemory, augmentation_space
 class Actor(nn.Module):
     def __init__(self, in_features, hidden, out_features):
         super().__init__()
+        self.layer_norm1 = nn.LayerNorm(in_features)
         self.linear1 = nn.Linear(in_features, hidden)
-        self.layer_norm1 = nn.LayerNorm(hidden)
         self.linear2 = nn.Linear(hidden, hidden)
         self.alpha_head = nn.Linear(hidden, out_features)
         self.beta_head = nn.Linear(hidden, out_features)
@@ -27,8 +27,8 @@ class Critic(nn.Module):
 
     def __init__(self, in_features, hidden):
         super().__init__()
+        self.layer_norm1 = nn.LayerNorm(in_features)
         self.linear1 = nn.Linear(in_features, hidden)
-        self.layer_norm1 = nn.LayerNorm(hidden)
         self.linear2 = nn.Linear(hidden, hidden)
         self.head = nn.Linear(hidden, 1)
 
@@ -42,8 +42,8 @@ class Controller(nn.Module):
 
     def __init__(self, in_features, hidden):
         super().__init__()
+        self.layer_norm1 = nn.LayerNorm(in_features)
         self.linear1 = nn.Linear(in_features, hidden)
-        self.layer_norm1 = nn.LayerNorm(hidden)
         self.linear2 = nn.Linear(hidden, hidden)
         self.head = nn.Linear(hidden, len(augmentation_space))
 
@@ -73,13 +73,16 @@ class Agent(nn.Module):
         self.actor_ = actor
         if control:
             self.controller = Controller(in_features=in_features, hidden=128)
+            self.controller_optimizer = torch.optim.Adam(
+                params=self.controller.parameters(), lr=3e-5, weight_decay=5e-4
+            )
 
         if actor:
             self.actor = Actor(in_features=in_features, hidden=128, out_features=1) 
 
-        self.actor_optimizer = torch.optim.Adam(
-            params=self.actor.parameters(), lr=3e-5, weight_decay=5e-4
-        )
+            self.actor_optimizer = torch.optim.Adam(
+                params=self.actor.parameters(), lr=3e-5, weight_decay=5e-4
+            )
         self.critic_optimizer = torch.optim.Adam(
             params=self.critic.parameters(), lr=3e-5, weight_decay=5e-4
         )
@@ -127,10 +130,15 @@ class Agent(nn.Module):
 
         actor_loss = -(log_prob * (td_target - prev_value.detach())).mean()
 
-        self.actor_optimizer.zero_grad()
+        if self.control_:
+            self.controller_optimizer.zero_grad()
+        if self.actor_:
+            self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        self.actor_optimizer.step()
-
+        if self.actor_:
+            self.actor_optimizer.step()
+        if self.control_:
+            self.controller_optimizer.step()
         critic_loss = torch.nn.functional.mse_loss(td_target, prev_value)
         self.critic_optimizer.zero_grad()
         critic_loss.backward()

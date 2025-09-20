@@ -77,10 +77,11 @@ class AdaAugment:
         self.rand_m = rand_m
         self.rand_t = rand_t
 
-    def set(self, keys, m, transform_idx=None):
-        for i, key in enumerate(keys):
-            self.key_magnitude[key] = m[i].cpu().detach()
-        
+    def set(self, keys, m=None, transform_idx=None):
+        if m is not None:
+            for i, key in enumerate(keys):
+                self.key_magnitude[key] = m[i].cpu().detach()
+            
         if transform_idx is not None:
             for i, key in enumerate(keys):
                 self.key_transform[key] = transform_idx[i].cpu().detach()
